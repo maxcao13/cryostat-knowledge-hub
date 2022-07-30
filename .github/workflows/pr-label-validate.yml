@@ -18,3 +18,4 @@ jobs:
           # This list is duplicated from release-drafter.yml
           required_labels: 'chore,ci,docs,feat,fix'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
