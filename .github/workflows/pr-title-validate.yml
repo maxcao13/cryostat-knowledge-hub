@@ -16,7 +16,7 @@ jobs:
       - uses: amannn/action-semantic-pull-request@v4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-       with:
+        with:
           # Configure that a scope must always be provided.
           requireScope: true
           # If the PR contains one of these labels, the validation is skipped.
