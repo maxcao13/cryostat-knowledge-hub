@@ -1,0 +1,22 @@
+name: Verify Linked Issue
+
+on:
+  pull_request: 
+    types:
+      - opened
+      - reopened
+      - edited
+      - synchronize
+
+jobs:
+  main:
+    name: Verify Linked Issue
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]' && github.actor != 'dependabot-preview[bot]'
+    steps:
+      - uses: hattan/verify-linked-issue-action@v1.1.1
+        id: verify_issue_reference
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          message: "An issue should be referenced in this PR!"
