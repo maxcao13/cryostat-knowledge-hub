@@ -1,0 +1,21 @@
+name: Validate PR Labels
+
+on:
+  pull_request:
+    types:
+      - opened
+      - labeled
+      - unlabeled
+      - synchronize
+
+jobs:
+  main:
+    name: Validate PR Labels
+    runs-on: ubuntu-latest
+    steps:
+      - uses: yashhy/pr-label-check-and-comment-action@v1.0.1
+        with:
+          # This list is duplicated from release-drafter.yml
+          required_labels: 'chore,ci,docs,feat,fix'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
