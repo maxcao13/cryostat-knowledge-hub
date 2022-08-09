@@ -2,22 +2,34 @@
 
 # Red Hat OpenJdk Interns command line tool - for use in "lazy" development
 
-# REQUIRES:
-# github CLI tool
-# easy install: $ sudo dnf install gh
-
 set -e
 
-cli_name=${0##*/}
-cli_name=${cli_name%.*}
+CLI_NAME=${0##*/}
+CLI_NAME=${CLI_NAME%.*}
+
+# Add yourself to this if contributed
+CLI_VERSION="v1.0.0"
+CLI_CONTR="Developed by: 
+\tMax Cao (@maxcao13)\n\tThuan Vo (@tthvo)"
+
+# REQUIRES:
+# git
+# gh (github CLI tool)
+DEPS="gh git"
+
+# API call to gh server
+if [ -z "$LZ_GH_USER" ]; then
+    export LZ_GH_USER=$(gh api user --jq '.login')
+fi
 
 help_message="
-$cli_name CLI - Red Hat OpenJdk Interns command line tool - for use in \"lazy\" development    
+$CLI_NAME CLI - Red Hat OpenJdk Interns command line tool - for use in \"lazy\" development    
 
-usage: $cli_name [--version] <command> [<args>] 
+usage: $CLI_NAME <command> [<args>] 
 
 Some commands have additional arguments. For example, the 'gh' command has a 'syncall' subcommand.
-Use '$cli_name help <command>' or '$cli_name commands --verbose' for details on subcommands."
+Use '$CLI_NAME help <command>'"
+# $CLI_NAME commands --verbose' for details on subcommands." (TODO)
 
 commands="
 general commands
@@ -29,13 +41,32 @@ workflow commands
     gh/git      Apply various lazy Git commands"
 
 ##############################################################################################
+# Setup Helper Functions
+##############################################################################################
+
+# Check if dependencies are installed
+checkDependencies() {
+    local pm=""
+    for p in $*;do
+        ! command -v $p > /dev/null 2>&1 && pm="$p $pm"
+    done
+    if [[ "$pm" != "" ]]; then
+        echo "Error: Following packages needs to be installed!!"
+        for p in $pm;do
+            echo -e "\t$p"
+        done
+        exit 1
+    fi
+}
+
+##############################################################################################
 # Lazy General commands                                                                                    
 ##############################################################################################
 
 cli_help () {
     echo "$help_message"
     echo "$commands"
-    exit 1
+    exit 0
 }
 
 ##############################################################################################
@@ -52,13 +83,15 @@ cli_git_help () {
 
     syncall     Synchronize a branch of a remote fork with the main branch of the source repository
     "
-    exit 1
+    exit 0
 }
 
 # Use this in each repository, to sync your forked repo's main branch with its source repo on GitHub.
 #
-# (if no arguments are given, then uses the current directory name as your remote fork name and uses GH_USER)
-# export GH_USER=maxcao13 # change this to your username
+# Optional arguemnts are used: 
+#   $1 - is the remote fork name, $2 is the remote GitHub username
+# (if no arguments are given, then uses the current directory name as your remote fork name and uses your gh CLI login as the remote user)
+
 # Example: lazyintern.sh syncall, lazyintern.sh syncall cryostat-knowledge-hub, lazyintern.sh syncall cryostat-knowledge-hub maxcao13 -f -b main 
 cli_git_syncall () {
     pull() {
@@ -68,11 +101,12 @@ cli_git_syncall () {
         git pull
     }
     # Error messaging setup
-    usage="Usage: cli_name git syncall [<remote-fork-name>] [<github-username>] [options]"
+    usage="Usage: CLI_NAME git syncall [<remote-fork-name>] [<github-username>] [options]"
     options_list="
--f force sync
 -b <branch> sync to a specific branch
--h show this help message"
+-f force sync
+-h show this help message
+-n don't pull into local repository, only sync fork"
     args=0
 
     # Variable setup
@@ -81,13 +115,12 @@ cli_git_syncall () {
     # Parse arguments
     while true; do
         # Options
-        while getopts "b:fhn" o; do
-            case ${o} in
+        while getopts "b:fhn" opt; do
+            case ${opt} in
                 b) # name of the branch to sync to
                     branch_name=$OPTARG
                     ;;    
                 f) # force sync
-                    echo "(with force)"
                     lz_gh_sync_f="--force"
                     ;;
                 h) # show help message
@@ -96,7 +129,6 @@ cli_git_syncall () {
                     exit 0
                     ;;
                 n) # dont update local repo
-                    echo "(with no pull)"
                     lz_gh_sync_n="--no-pull"
                     ;;
                 *)
@@ -106,11 +138,11 @@ cli_git_syncall () {
         done
  
         while [[ $OPTIND -le $# && ${!OPTIND} != -* ]]; do
-            if [[ args -eq 0 ]]; then
+            if [[ $args -eq 0 ]]; then
                 repo_name=${!OPTIND}
                 args=$((args+1))
-            elif [[ args -eq 1 ]]; then
-                GH_USER=${!OPTIND}
+            elif [[ $args -eq 1 ]]; then
+                LZ_GH_USER=${!OPTIND}
                 args=$((args+1))
             else 
                 echo "Invalid argumemt: ${!OPTIND}"
@@ -132,16 +164,17 @@ cli_git_syncall () {
         repo_name=$(basename $(pwd))
     fi
 
-    if [ -z $GH_USER ]; then
-        echo "You must set the GH_USER environment variable to your GitHub username or provide a second argument as your username"
+    if [ -z $LZ_GH_USER ]; then
+        echo "Auth Error: You must either: 
+        1) Login to gh using `gh auth login`
+        2) set the LZ_GH_USER environment variable to your GitHub username
+        3) provide a second argument as your username"
         exit 1
     fi
 
     # do the command
-    echo "Syncing ${GH_USER}/${repo_name}#$branch_name with GitHub..."
-    echo $lz_gh_sync_f
-    echo $branch_name
-    gh repo sync $GH_USER/$repo_name -b $branch_name $lz_gh_sync_f
+    echo "Syncing ${LZ_GH_USER}/${repo_name}#$branch_name with GitHub..."
+    gh repo sync $LZ_GH_USER/$repo_name -b $branch_name $lz_gh_sync_f
 
     # check if no pull
     if [ -z $lz_gh_sync_n ]; then
@@ -156,23 +189,27 @@ cli_git_syncall () {
 # Main
 ##############################################################################################
 
+checkDependencies $DEPS
+
 case "$1" in
-  gh|git)
-    case "$2" in
-        syncall)
-            cli_git_syncall ${@:3}
-            ;;
-        *)
-            cli_git_help
-            ;;
-    esac
+    version)
+        echo -e "\n$CLI_NAME $CLI_VERSION\n\n$CLI_CONTR"
     ;;
-  *)
-    cli_help
+    gh|git)
+        case "$2" in
+            syncall)
+                cli_git_syncall ${@:3}
+            ;;
+            *)
+                cli_git_help
+            ;;
+        esac
+    ;;
+
+    *)
+        cli_help
     ;;
 esac
 
-# e.g. usage
-# $ gh syncall
-# $ gh syncall maxcao13
-# $ gh syncall maxcao13 cryostat
+exit 0
+
