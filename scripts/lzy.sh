@@ -67,7 +67,8 @@ checkDependencies() {
 # Ensure that the user is logged in to GitHub through the gh CLI tool
 # (TODO): Eventually we should probably 'cache' credentials, so that we don't run api calls all the time but probably when this is not a sh script anymore
 ensureLoggedIn() {
-  ! gh auth status &> /dev/null && echo "Not logged in. Running git auth login..." && git auth login
+  ! gh auth status &> /dev/null && echo "Not logged in. Running git auth login..." && gh auth login
+  # echo $? 
   if [ $? -ne 0 ]; then
     exit 1
   fi
