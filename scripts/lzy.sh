@@ -4,8 +4,6 @@
 
 # curl this with curl `https://raw.githubusercontent.com/rhat-openjdk-interns/cryostat-knowledge-hub/main/scripts/lzy.sh > lzy.sh`
 
-set -e
-
 CLI_NAME=${0##*/}
 CLI_NAME=${CLI_NAME%.*}
 
@@ -31,9 +29,10 @@ $CLI_NAME CLI - Red Hat OpenJdk Interns command line tool - for use in \"lazy\" 
 
 usage: $CLI_NAME <command> [<args>] 
 
-Some commands have additional arguments. For example, the 'gh' command has a 'syncall' subcommand.
-Use '$CLI_NAME help <command>'"
-# $CLI_NAME commands --verbose' for details on subcommands." (TODO)
+Some commands have additional arguments. 
+e.g., the 'gh' command has a 'syncall' subcommand.
+
+Use '$CLI_NAME <command> -h'for more details on subcommands."
 
 commands="
 general commands
@@ -67,11 +66,7 @@ checkDependencies() {
 # Ensure that the user is logged in to GitHub through the gh CLI tool
 # (TODO): Eventually we should probably 'cache' credentials, so that we don't run api calls all the time but probably when this is not a sh script anymore
 ensureLoggedIn() {
-  ! gh auth status &> /dev/null && echo "Not logged in. Running git auth login..." && gh auth login
-  # echo $? 
-  if [ $? -ne 0 ]; then
-    exit 1
-  fi
+  ! gh auth status &> /dev/null && echo "Not logged in. Running git auth login..." && ! gh auth login && exit 1
 }
 
 ##############################################################################################
