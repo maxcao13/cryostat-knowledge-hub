@@ -68,7 +68,6 @@ checkDependencies() {
 # (TODO): Eventually we should probably 'cache' credentials, so that we don't run api calls all the time but probably when this is not a sh script anymore
 ensureLoggedIn() {
   ! gh auth status &> /dev/null && echo "Not logged in. Running git auth login..." && git auth login
-  echo $?
   if [ $? -ne 0 ]; then
     exit 1
   fi
