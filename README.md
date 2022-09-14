@@ -23,7 +23,7 @@ TODO: add more links as more docs and scripts are written
 ### External Links
 #### cryostat
 * [Project README](https://github.com/cryostatio/cryostat#readme)
-* [HTTP API reference](https://github.com/cryostatio/cryostat/blob/main/HTTP_API.md) 
+* [HTTP API reference](https://github.com/cryostatio/cryostat/blob/main/docs/HTTP_API.md) 
 <!--TODO: Update as more docs are written for future OpenJDK and Cryostat releases -->
 * [Docs and features for using OpenJDK11 and Cryostat 2.* from the user perspective](https://access.redhat.com/documentation/en-us/openjdk/11)
 #### cryostat-operator
