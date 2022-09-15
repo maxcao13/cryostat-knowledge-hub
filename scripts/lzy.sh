@@ -104,7 +104,7 @@ cli_git_help () {
 #   $1 - is the remote fork name, $2 is the remote GitHub username
 #   (if no arguments are given, then uses the current directory name as your remote fork name and uses your gh CLI login as the remote user)
 
-# Example: lazyintern.sh gh s, lazyintern.sh git syncall cryostat-knowledge-hub, lazyintern.sh syncall cryostat-knowledge-hub maxcao13 -f -b main 
+# Example: lzy.sh gh s, lzy.sh git syncall cryostat-knowledge-hub, lzy.sh syncall cryostat-knowledge-hub maxcao13 -f -b main 
 cli_git_syncall () {
     pull() {
         git checkout $branch_name
@@ -198,6 +198,22 @@ cli_git_syncall () {
     exit 0
 }
 
+##############################################################################################
+# Lazy Cryostat commands
+##############################################################################################
+# REQUIRES:
+# cryostat components
+##############################################################################################
+
+# Use this to start smoketest.sh in one terminal, and -web in another
+# Assumes cryostat and cryostat-web are in ~/workspace
+
+# Example: lzy.sh cr
+cry_smoketest_web() {
+    gnome-terminal --tab --title="cryostat-web" --command="bash -c 'cd ~/workspace/cryostat-web; echo \"waiting for cryostat to start...\"; sleep 7; yarn start:dev;$SHELL'" & 
+    cd ~/workspace/cryostat && CRYOSTAT_DISABLE_SSL=true CRYOSTAT_CORS_ORIGIN=http://localhost:9000 sh ~/workspace/cryostat/smoketest.sh
+    exit 0
+}
 
 ##############################################################################################
 # Main
@@ -220,7 +236,9 @@ case "$1" in
             ;;
         esac
     ;;
-
+    cr)
+        cry_smoketest_web
+    ;;
     *)
         cli_help
     ;;
