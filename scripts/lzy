@@ -1,0 +1,527 @@
+#!/bin/bash
+
+# Red Hat OpenJdk Interns command line tool - for use in "lazy" development
+
+# Put this file on your $PATH
+# Now commands can be run like > (lzy gh sync)
+
+CLI_NAME="lzy"
+CLI_VERSION="v1.0.0"
+CLI_CONTR="Developed by: 
+\tMax Cao (@maxcao13)\n\tThuan Vo (@tthvo)"
+
+# REQUIRES:
+# git
+# gh (github CLI tool)
+DEPS=("gh" "git" "crc" "podman")
+
+# API call to gh server
+if [ -z "$LZ_GH_USER" ]; then
+    LZ_GH_USER=$(gh api user --jq '.login')
+    export LZ_GH_USER 
+fi
+
+crystt_help_msg="[cr]        Apply various lazy Cryostat-related convienience commands"
+gh_help_msg="[git | gh]    Apply various lazy Git/GitHub commands"
+pod_help_msg="[pod]       Apply various lazy Podman convienience commands"
+
+help_message="
+$CLI_NAME CLI - Red Hat OpenJdk Interns command line tool - for use in \"lazy\" development    
+
+usage: $CLI_NAME <command> [<args>] 
+
+Some commands have additional arguments. 
+(e.g.) the 'gh' command has a 'sync' subcommand.
+
+Use '$CLI_NAME <command> -h' for more details on subcommands."
+
+commands="
+general commands
+    commands    List all commands and their usage 
+    help        Show this help message
+    version     Show the version of this tool
+
+workflow commands
+    $crystt_help_msg
+    $gh_help_msg
+    $pod_help_msg"
+
+##############################################################################################
+# Setup Helper Functions
+##############################################################################################
+
+# Check if dependencies are installed
+checkDependencies() {
+    local pm=()
+    for p in "$@"; do
+        ! command -v "$p" >/dev/null 2>&1 && pm+=("$p")
+    done
+    if [ ${#pm[@]} -gt 0 ]; then
+        echo "Error: Following packages needs to be installed!!"
+        for p in "${pm[@]}"; do
+            echo -e "\t$p"
+        done
+    fi
+}
+
+# Ensure that the user is logged in to GitHub through the gh CLI tool
+ensureLoggedIn() {
+  ! gh auth status &> /dev/null && echo "Not logged in. Running git auth login..." && ! gh auth login && exit 1
+}
+
+# This code is released in public domain by Han Boetes <han@mijncomputer.nl>
+#
+# This script tries to exec a terminal emulator by trying some known terminal
+# emulators.
+#
+# We welcome patches that add distribution-specific mechanisms to find the
+# preferred terminal emulator. On Debian, there is the x-terminal-emulator
+# symlink for example.
+#
+# Invariants:
+# 1. $TERMINAL must come first
+# 2. Distribution-specific mechanisms come next, e.g. x-terminal-emulator
+# 3. The terminal emulator with best accessibility comes first.
+# 4. No order is guaranteed/desired for the remaining terminal emulators.
+i3_sensible_terminal() {
+    for term in "$TERMINAL" x-terminal-emulator mate-terminal gnome-terminal terminator xfce4-terminal urxvt rxvt termit Eterm aterm uxterm xterm roxterm termite lxterminal terminology st qterminal lilyterm tilix terminix konsole kitty guake tilda alacritty hyper wezterm; do
+        if command -v "$term" > /dev/null 2>&1; then
+            eval "$term" "$@"
+            return
+        fi
+    done
+    echo 'i3-sensible-terminal could not find a terminal emulator. Please install one.'
+}
+
+##############################################################################################
+# Lazy General commands                                                                                    
+##############################################################################################
+
+cli_help () {
+    echo "$help_message"
+    echo "$commands"
+}
+
+##############################################################################################
+# Lazy Cryostat commands
+##############################################################################################
+# REQUIRES:
+# cryostat components
+##############################################################################################
+
+cli_crystt_help () {
+    echo "
+    $crystt_help_msg"
+    printf "
+
+    crc  | Start a CodeReady Containers instance, login as admin, and open web console
+    sm   | Package cryostat and start a smoketest deployment
+    smw  | Start a cryostat-web devserver in a new GNOME terminal and run smoketest\n"
+}
+
+# Use this to start crc, oc login with admin credentials, and open the web console
+# Must be in a cryostat repo directory, and cryostat
+# Example: lzy cr smw, lzy cr smw -ps
+cli_crystt_crc() {
+    crc start -m 14336
+    IFS=" " read -r -a arr <<< "$(crc console -o json | jq -r '.clusterConfig | "\(.adminCredentials.username) \(.adminCredentials.password) \(.url) \(.webConsoleUrl)"' )"
+    oc login -u "${arr[0]}" -p "${arr[1]}" "${arr[2]}"
+    xdg-open "${arr[3]}"
+}
+
+# Use this to start smoketest.sh in one terminal and optionally package and skip tests as well as output the log to a file
+# Example: lzy cr sm -cps
+cli_crystt_smoke() {
+    if (podman pod exists cryostat-pod) ; then
+        echo "cryostat pod exists already!"
+        exit 1;
+    fi
+    usage() {
+        printf "Usage: %s cr smw [options]" "$CLI_NAME"
+        printf "\n
+        -c         | clean mvn /target before packaging
+        -s         | skip tests
+        -h         | show this help message
+        -p         | run mvn package before starting
+        "
+    }
+    local c; local p; local s;
+
+    while getopts "::chps" opt; do
+        case ${opt} in
+            c) # clean before running
+                c=true
+                ;;
+            h) # show help message
+                usage
+                exit 0
+                ;;
+            p) # package
+                p="mvn package"
+                ;;
+            s) # skip compilation of tests
+                s="-Dmaven.test.skip=true -DskipTests -Dspotless.check.skip"
+                ;;
+            *)
+                echo "Invalid argumemt: ${!OPTIND}"
+                exit 1
+                ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    # Package as image
+    if [ -n "$p" ]; then
+        if [ -n "$c" ]; then
+            p="mvn clean package"
+        fi
+        if eval "$p $s"; then
+            echo "Package successful!"
+        else
+            echo "Package failed..."
+            exit 1
+        fi
+    fi
+    # Start cryostat
+    eval sh smoketest.sh "${@}"
+
+    exit 0
+}
+
+# Use this to start cryostat-web devserver in a new terminal and run smoketest
+# 
+# Must be in a cryostat repo directory, and cryostat
+# Example: lzy cr smw, lzy cr smw -ps
+cli_crystt_smoke_web() {
+    if (podman pod exists cryostat-pod) ; then
+        echo "cryostat pod exists already!"
+        exit 1;
+    fi
+    usage() {
+        printf "Usage: %s cr smw [options]" "$CLI_NAME"
+        printf "\n
+        -h         | show this help message
+        -p         | run mvn package before starting
+        -s         | skip tests
+        "
+    }
+    local p; local s
+    local PATH_TO_WEB="$HOME/workspace/cryostat-web" # can set this to your particular cryostat-web path
+
+    while getopts "::hps" opt; do
+        case ${opt} in  
+            h) # show help message
+                usage
+                exit 0
+                ;;
+            p) # package
+                p="mvn -Dheadless=true clean package"
+                ;;
+            s) # skip compilation of tests
+                s="-Dmaven.test.skip=true -DskipTests -Dspotless.check.skip"
+                ;;
+            *)
+                echo "Invalid argumemt: ${!OPTIND}"
+                exit 1
+                ;;
+        esac
+    done
+    shift $((OPTIND-1))
+    if ! lsof -i:9000 > /dev/null 2>&1 ; then
+        # Start cryostat-web if port 9000 is open (i.e. cryostat-web is not running on port 9000)
+        if [ -z "$p" ]; then
+            # Don't package so takes shorter time
+            i3_sensible_terminal "-- bash -c 'cd $PATH_TO_WEB; echo "waiting for cryostat to start..." ; sleep 12; yarn start:dev;$SHELL'"
+        else 
+            i3_sensible_terminal "-- bash -c 'cd $PATH_TO_WEB; echo "waiting for cryostat to start..." ; sleep 30; yarn start:dev;$SHELL'"
+        fi
+    fi
+
+    # Package as image
+    if [ -n "$p" ]; then
+        if [ -n "$s" ]; then
+            if eval "$p $s"; then
+            echo "Package successful!"
+            else
+                echo "Package failed..."
+                exit 1
+            fi
+        else
+            if eval "$p"; then
+            echo "Package successful"
+            else
+                echo "Package failed..."
+                exit 1
+            fi
+        fi
+    fi
+
+    # Start cryostat
+    eval CRYOSTAT_DISABLE_SSL=true CRYOSTAT_CORS_ORIGIN=http://localhost:9000 CRYOSTAT_IMAGE=quay.io/cryostat/cryostat:latest sh smoketest.sh "${@}"
+
+    exit 0
+}
+
+##############################################################################################
+# Lazy Git commands
+##############################################################################################
+# REQUIRES:
+# github CLI tool
+# easy install: $ sudo dnf install gh 
+# then ensure you are logged in: $ gh auth login
+##############################################################################################
+
+cli_git_help () {
+    echo "
+    $gh_help_msg"
+    printf "
+
+    rbs         | Rebase a branch of a remote fork with the main branch of the source repository
+    rbc         | Continue a rebase
+    sig         | Sign off on your commits
+    sub         | Re-initialize repository submodules to latest commit
+    sync        | Synchronize a branch of a remote fork with the main branch of the source repository\n"
+}
+
+# Rebase a branch of a remote fork with the main branch of the source repository
+# Example: lzy gh rbs
+cli_git_rbs () {
+    git fetch upstream
+    git rebase upstream/main
+}
+
+# Continue a rebase without editing the commit message
+# Example: lzy gh rbc
+cli_git_rbc () {
+    git add -A
+    GIT_EDITOR=true git rebase --continue 
+}
+
+# Sign off on your commits without editing the commit message and without adding a new commit
+# Example: lzy gh sig
+cli_git_sig () {
+    git commit --amend --signoff --no-edit
+}
+
+# Re-initialize repository submodules to latest commit (useful if using git stash)
+# Example: lzy gh sub
+cli_git_sub () {
+    git fetch upstream
+    git submodule deinit -f .
+    git submodule update --init
+}
+
+# Use this in each repository, to sync your forked repo's main branch with its source repo on GitHub.
+#
+# Optional arguments are used: 
+#   $1 - is the remote fork name, $2 is the remote GitHub username
+#   (if no arguments are given, then uses the current directory name as your remote fork name and uses your gh CLI login as the remote user)
+
+# Example: lzy gh s, lzy git sync cryostat-knowledge-hub, lzy gh sync cryostat-knowledge-hub maxcao13 -f -b main 
+cli_git_sync () {
+    pull() {
+        git checkout "$branch_name"
+        git fetch origin
+        git fetch upstream
+        git fetch --prune
+        git pull
+    }
+    # Error messaging setup
+    usage() {
+        printf "Usage: %s git sync [<remote-fork-name>] [<github-username>] [options]" "$CLI_NAME"
+        printf "\n
+        -b <branch> | sync to a specific <branch> ; e.g., \"-b main\"
+        -f          | force sync  
+        -h          | show this help message
+        -n          | don't git pull (no pull)
+        -p          | prune
+        "  
+    }
+    # Helper for parsing arguments
+    args=0
+
+    # Variable setup
+    branch_name="main"
+
+    # Parse arguments
+    while true; do
+        while getopts "b:fhn" opt; do
+            case ${opt} in
+                b) # name of the branch to sync to
+                    branch_name=$OPTARG
+                    ;;    
+                f) # force sync
+                    lz_gh_sync_f="--force"
+                    ;;
+                h) # show help message
+                    usage
+                    exit 0
+                    ;;
+                n) # dont update local repo
+                    lz_gh_sync_n="--no-pull"
+                    ;;
+                *)
+                    exit 1
+                    ;;
+            esac
+        done
+ 
+        while [[ $OPTIND -le $# && ${!OPTIND} != -* ]]; do
+            if [[ $args -eq 0 ]]; then
+                repo_name=${!OPTIND}
+                args=$((args+1))
+            elif [[ $args -eq 1 ]]; then
+                LZ_GH_USER=${!OPTIND}
+                args=$((args+1))
+            else 
+                echo "Invalid argumemt: ${!OPTIND}"
+                usage
+                exit 1
+            fi
+
+            ((OPTIND++))
+        done
+        # Stop when we've run out of arguments
+        if [[ $OPTIND > $# ]]; then
+            break
+        fi
+    done
+
+    # Argument validation
+    if [ -z "$repo_name" ]; then
+        repo_name=$(basename "$(pwd)")
+    fi
+
+    if [ -z "$LZ_GH_USER" ]; then
+        echo "Auth Error: You must either: 
+        1) Login to gh using \'gh auth login\'
+        2) set the LZ_GH_USER environment variable to your GitHub username
+        3) provide a second argument as your username"
+        exit 1
+    fi
+
+    # do the command
+    echo "Syncing ${LZ_GH_USER}/${repo_name}#$branch_name with GitHub..."
+    eval "(gh repo sync $LZ_GH_USER/$repo_name -b ${branch_name} ${lz_gh_sync_f})" || exit 1
+
+    # check if no pull
+    if [ -z "$lz_gh_sync_n" ]; then
+        pull
+    fi
+
+    exit 0
+}
+
+##############################################################################################
+# Lazy Podman commands
+##############################################################################################
+# REQUIRES:
+# podman
+##############################################################################################
+
+cli_pod_help() {
+    echo "
+    $pod_help_msg"
+    printf "
+
+    ps   | Inspect running containers formatted prettily
+    rmi  | Remove all ghcr.io pr-tagged and any dangling images\n"
+}
+
+# Use this to see containers in any pods currently running in a pretty format
+# Example: lzy pod ps
+cli_pod_format() {
+    podman ps --format "{{.Pod}} || {{.ID}} || {{.RunningFor}} || {{.Names}}"
+}
+
+# Use this to remove all ghcr.io images with pr tag; also removes dangling images
+# Example: lzy pod rmi
+cli_pod_rmi_ghcr() {
+    podman image prune -f
+    arr=()
+    while IFS='' read -r line; do arr+=("$line"); done < <(podman images -n -q --filter reference=ghcr.io/*/*:pr-*)
+    # echo if array is not empty 
+
+    if [ ${#arr[@]} -gt 0 ]; then
+        echo "Removing... ${arr[@]}" 
+        podman rmi -f "${arr[@]}"
+    else 
+        echo "No images to remove..."
+        exit 1
+    fi
+}
+
+##############################################################################################
+# Main
+##############################################################################################
+
+checkDependencies "${DEPS[@]}"
+
+case "$1" in
+    commands)
+        echo "$commands"
+    ;;
+    h|help)
+        cli_help;
+    ;; 
+    v|version)
+        echo -e "\n$CLI_NAME $CLI_VERSION\n\n$CLI_CONTR"
+    ;;
+    cr)
+        case "$2" in
+            sm)
+                cli_crystt_smoke "${@:3}"
+            ;;
+            smw) 
+                cli_crystt_smoke_web "${@:3}"
+            ;;
+            crc)
+                cli_crystt_crc
+            ;;
+            *)
+                cli_crystt_help; exit 1;
+            ;;
+        esac
+    ;;
+    git|gh)
+        ensureLoggedIn
+        case "$2" in
+            rbs)
+                cli_git_rbs
+            ;;
+            rbc)
+                cli_git_rbc
+            ;;
+            sig)
+                cli_git_sig
+            ;;
+            sub)    
+                cli_git_sub
+            ;;
+            sync)
+                cli_git_sync "${@:3}"
+            ;;
+            *)
+                cli_git_help; exit 1
+            ;;
+        esac
+    ;;
+    pod)
+        case "$2" in
+            rmi)
+                cli_pod_rmi_ghcr
+            ;;
+            ps)
+                cli_pod_format
+            ;;
+            *)
+                cli_pod_help; exit 1;
+            ;;
+        esac
+    ;;
+    *)
+        cli_help; exit 1;
+    ;;
+esac
+
+exit 0

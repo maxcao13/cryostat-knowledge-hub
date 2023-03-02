@@ -1,0 +1,19 @@
+#!/usr/bin/bash
+set -e
+
+# Set defaults (replace with your own credentials)
+QUAY_USERNAME=""
+QUAY_PASSWORD=""
+
+GHCR_USERNAME=""
+GHCR_PAT=""
+
+# Try login
+echo "Try to login to quay..."
+podman login quay.io -u "$QUAY_USERNAME" -p "$QUAY_PASSWORD" 
+
+echo "Try to login to ghcr..."
+podman login ghcr.io/cryostatio -u "$GHCR_USERNAME" -p "$GHCR_PAT" 
+
+# Done
+echo -e "\nLgn Script Successful!"
